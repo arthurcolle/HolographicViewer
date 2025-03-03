@@ -1,33 +1,33 @@
-import flask
-from flask import Flask, render_template, request, jsonify
+from fastapi import FastAPI, HTTPException, UploadFile, File
+from fastapi.responses import JSONResponse
+from fastapi.staticfiles import StaticFiles
+import uvicorn
 import os
 import json
 
-app = Flask(__name__)
+app = FastAPI()
 
-@app.route('/')
-def index():
-    return render_template('index.html')
+app.mount("/static", StaticFiles(directory="static"), name="static")
 
-@app.route('/models')
+@app.get("/models")
 def list_models():
     models = {
         "aircraft": ["f16.glb", "b2_spirit.glb", "helicopter.glb", "commercial_airliner.glb"],
         "vehicles": ["car.glb", "truck.glb", "tank.glb", "train.glb"],
         "city": ["new_york.glb", "tokyo.glb", "london.glb", "custom_city.glb"]
     }
-    return jsonify(models)
+    return JSONResponse(content=models)
 
-@app.route('/scenarios')
+@app.get("/scenarios")
 def list_scenarios():
     scenarios = [
         {"id": "city_flyover", "name": "City Flyover", "description": "Aircraft flying over a city"},
         {"id": "ground_vehicles", "name": "Ground Vehicle Simulation", "description": "Vehicles moving through city streets"},
         {"id": "military_op", "name": "Military Operation", "description": "Combined aircraft and ground vehicle operation"}
     ]
-    return jsonify(scenarios)
+    return JSONResponse(content=scenarios)
 
-@app.route('/load_scenario/<scenario_id>')
+@app.get("/load_scenario/{scenario_id}")
 def load_scenario(scenario_id):
     # In a real app, this would load specific configuration
     scenario_configs = {
@@ -55,28 +55,21 @@ def load_scenario(scenario_id):
     }
     
     if scenario_id in scenario_configs:
-        return jsonify(scenario_configs[scenario_id])
+        return JSONResponse(content=scenario_configs[scenario_id])
     else:
-        return jsonify({"error": "Scenario not found"}), 404
+        raise HTTPException(status_code=404, detail="Scenario not found")
 
-@app.route('/upload_model', methods=['POST'])
-def upload_model():
-    if 'model' not in request.files:
-        return jsonify({"error": "No model file provided"}), 400
+@app.post("/upload_model")
+async def upload_model(model: UploadFile = File(...)):
+    if not model.filename.endswith('.glb'):
+        raise HTTPException(status_code=400, detail="Invalid file type")
     
-    file = request.files['model']
-    if file.filename == '':
-        return jsonify({"error": "Empty filename"}), 400
+    filepath = os.path.join('static/models', model.filename)
+    with open(filepath, "wb") as buffer:
+        buffer.write(await model.read())
     
-    if file and file.filename.endswith('.glb'):
-        # Save the file
-        filepath = os.path.join('static/models', file.filename)
-        file.save(filepath)
-        return jsonify({"success": True, "filename": file.filename})
-    else:
-        return jsonify({"error": "Invalid file type"}), 400
+    return {"success": True, "filename": model.filename}
 
-if __name__ == '__main__':
-    # Ensure the models directory exists
+if __name__ == "__main__":
     os.makedirs('static/models', exist_ok=True)
-    app.run(debug=True)
+    uvicorn.run(app, host="0.0.0.0", port=8000, debug=True)
