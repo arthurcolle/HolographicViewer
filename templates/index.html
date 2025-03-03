@@ -243,9 +243,12 @@
                         this.models = data;
                         this.populateModelSelect();
                     })
-                    .catch(error => console.error('Error loading models:', error));
+                    .catch(error => {
+                        console.error('Error loading models:', error);
+                        this.showSystemMessage('Error loading models: ' + error);
+                    });
             }
-            
+
             loadScenarios() {
                 // Fetch scenarios from server
                 fetch('/scenarios')
@@ -254,7 +257,10 @@
                         this.scenarios = data;
                         this.populateScenarioSelect();
                     })
-                    .catch(error => console.error('Error loading scenarios:', error));
+                    .catch(error => {
+                        console.error('Error loading scenarios:', error);
+                        this.showSystemMessage('Error loading scenarios: ' + error);
+                    });
             }
             
             populateModelSelect() {
