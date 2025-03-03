@@ -1,0 +1,709 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Holographic 3D Model Viewer</title>
+    <style>
+        body { margin: 0; padding: 0; overflow: hidden; background-color: #000; color: #ffb300; font-family: monospace; }
+        #container { position: relative; width: 100vw; height: 100vh; }
+        #renderer { position: absolute; top: 0; left: 0; width: 100%; height: 100%; }
+        #overlay { position: absolute; top: 0; left: 0; width: 100%; padding: 10px; z-index: 100; }
+        .panel { background-color: rgba(0, 0, 0, 0.7); border: 1px solid #ffb300; border-radius: 5px; padding: 10px; margin-bottom: 10px; }
+        button, select { background-color: #ffb300; color: #000; border: none; padding: 5px 10px; margin: 5px; cursor: pointer; }
+        h1, h2 { color: #ffb300; }
+        .grid { position: absolute; top: 0; left: 0; right: 0; bottom: 0; pointer-events: none; }
+        .grid:before, .grid:after { content: ""; position: absolute; width: 100%; height: 100%; background-size: 50px 50px; opacity: 0.3; }
+        .grid:before { background-image: linear-gradient(to right, #ffb300 1px, transparent 1px); }
+        .grid:after { background-image: linear-gradient(to bottom, #ffb300 1px, transparent 1px); }
+        .hologram-effect { position: absolute; top: 0; left: 0; right: 0; bottom: 0; pointer-events: none; background: repeating-linear-gradient(0deg, rgba(0, 0, 0, 0.1), rgba(0, 0, 0, 0.1) 1px, transparent 1px, transparent 2px); }
+        .system-status { color: #ffb300; font-size: 12px; text-align: right; margin-top: 10px; }
+        #control-panel { position: absolute; bottom: 10px; left: 10px; right: 10px; display: flex; justify-content: space-between; }
+        .control-group { display: flex; flex-direction: column; }
+    </style>
+</head>
+<body>
+    <div id="container">
+        <div class="grid"></div>
+        <div class="hologram-effect"></div>
+        <div id="renderer"></div>
+        
+        <div id="overlay">
+            <div class="panel">
+                <h1>ISHAN-CLAUDE HOLOGRAPHIC SYSTEM V1</h1>
+                <div>MODEL LOADED: <span id="current-model">None</span></div>
+            </div>
+            
+            <div class="panel">
+                <h2>Scenario Selection</h2>
+                <select id="scenario-select">
+                    <option value="">Select Scenario</option>
+                    <!-- Populated via JavaScript -->
+                </select>
+                <button id="load-scenario">LOAD SCENARIO</button>
+            </div>
+            
+            <div class="panel">
+                <h2>Model Library</h2>
+                <div>
+                    <select id="model-category">
+                        <option value="aircraft">Aircraft</option>
+                        <option value="vehicles">Vehicles</option>
+                        <option value="city">Cities</option>
+                    </select>
+                    <select id="model-select">
+                        <!-- Populated via JavaScript -->
+                    </select>
+                    <button id="add-model">ADD MODEL</button>
+                </div>
+            </div>
+        </div>
+        
+        <div id="control-panel">
+            <div class="control-group">
+                <button id="rotate-left">ROTATE LEFT</button>
+                <button id="rotate-right">ROTATE RIGHT</button>
+            </div>
+            
+            <div class="control-group">
+                <button id="zoom-in">ZOOM IN</button>
+                <button id="zoom-out">ZOOM OUT</button>
+            </div>
+            
+            <div class="control-group">
+                <button id="move-up">MOVE UP</button>
+                <button id="move-down">MOVE DOWN</button>
+            </div>
+            
+            <div class="control-group">
+                <button id="toggle-physics">TOGGLE PHYSICS</button>
+                <button id="reset-scene">RESET SCENE</button>
+            </div>
+        </div>
+        
+        <div class="panel system-status">
+            SYSTEM READY<br>
+            CORE TEMPERATURE: NOMINAL<br>
+            SYNC RATIO: 78.5%<br>
+            ENTRY FLAG: SECURE
+        </div>
+    </div>
+
+    <!-- Import Three.js library -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/dat-gui/0.7.7/dat.gui.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/cannon.js/0.6.2/cannon.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/stats.js/r16/Stats.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/tween.js/18.6.4/tween.umd.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/EffectComposer.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/RenderPass.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/ShaderPass.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/shaders/CopyShader.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/postprocessing/UnrealBloomPass.js"></script>
+    
+    <script>
+        // Holographic 3D Model Viewer
+        class HolographicViewer {
+            constructor() {
+                this.container = document.getElementById('renderer');
+                this.scene = new THREE.Scene();
+                this.camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 10000);
+                this.renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+                this.clock = new THREE.Clock();
+                this.mixers = [];
+                this.models = [];
+                this.activeModels = [];
+                this.physics = { enabled: false, world: null, bodies: [], meshes: [] };
+                this.currentScenario = null;
+                
+                // Initialize the viewer
+                this.init();
+                this.setupLights();
+                this.setupControls();
+                this.setupPostProcessing();
+                this.setupPhysics();
+                this.loadModels();
+                this.loadScenarios();
+                this.setupEventListeners();
+                
+                // Start animation loop
+                this.animate();
+                
+                // Load default environment
+                this.loadEnvironment('grid');
+                
+                // Update system status periodically
+                setInterval(() => this.updateSystemStatus(), 5000);
+            }
+            
+            init() {
+                // Setup renderer
+                this.renderer.setSize(window.innerWidth, window.innerHeight);
+                this.renderer.setPixelRatio(window.devicePixelRatio);
+                this.renderer.setClearColor(0x000000, 0);
+                this.container.appendChild(this.renderer.domElement);
+                
+                // Setup camera
+                this.camera.position.set(0, 100, 300);
+                this.camera.lookAt(0, 0, 0);
+                
+                // Add ambient and environmental effects
+                this.scene.fog = new THREE.FogExp2(0x000000, 0.0015);
+                
+                // Handle window resize
+                window.addEventListener('resize', () => {
+                    this.camera.aspect = window.innerWidth / window.innerHeight;
+                    this.camera.updateProjectionMatrix();
+                    this.renderer.setSize(window.innerWidth, window.innerHeight);
+                    if (this.composer) this.composer.setSize(window.innerWidth, window.innerHeight);
+                });
+                
+                // Debug stats
+                this.stats = new Stats();
+                this.stats.showPanel(0);
+                document.body.appendChild(this.stats.dom);
+                this.stats.dom.style.position = 'absolute';
+                this.stats.dom.style.top = '0px';
+                this.stats.dom.style.right = '0px';
+                this.stats.dom.style.left = 'auto';
+            }
+            
+            setupLights() {
+                // Add lights
+                const ambientLight = new THREE.AmbientLight(0x404040, 1);
+                this.scene.add(ambientLight);
+                
+                const directionalLight = new THREE.DirectionalLight(0xffb300, 1);
+                directionalLight.position.set(1, 1, 1);
+                this.scene.add(directionalLight);
+                
+                // Add holographic light effect
+                const pointLight = new THREE.PointLight(0x00ccff, 2, 500);
+                pointLight.position.set(0, 150, 0);
+                this.scene.add(pointLight);
+                
+                // Animate the point light for a pulsing effect
+                this.pulsingLight = pointLight;
+            }
+            
+            setupControls() {
+                // Orbit controls for camera
+                this.controls = new THREE.OrbitControls(this.camera, this.renderer.domElement);
+                this.controls.enableDamping = true;
+                this.controls.dampingFactor = 0.05;
+                this.controls.screenSpacePanning = false;
+                this.controls.minDistance = 10;
+                this.controls.maxDistance = 1000;
+                this.controls.maxPolarAngle = Math.PI / 2;
+            }
+            
+            setupPostProcessing() {
+                // Setup post-processing effects
+                this.composer = new THREE.EffectComposer(this.renderer);
+                
+                const renderPass = new THREE.RenderPass(this.scene, this.camera);
+                this.composer.addPass(renderPass);
+                
+                // Bloom effect for holographic glow
+                const bloomPass = new THREE.UnrealBloomPass(
+                    new THREE.Vector2(window.innerWidth, window.innerHeight),
+                    1.5,  // strength
+                    0.4,  // radius
+                    0.85  // threshold
+                );
+                this.composer.addPass(bloomPass);
+                
+                const copyPass = new THREE.ShaderPass(THREE.CopyShader);
+                copyPass.renderToScreen = true;
+                this.composer.addPass(copyPass);
+            }
+            
+            setupPhysics() {
+                // Setup physics world
+                this.physics.world = new CANNON.World();
+                this.physics.world.gravity.set(0, -9.82, 0);
+                this.physics.world.broadphase = new CANNON.NaiveBroadphase();
+                this.physics.world.solver.iterations = 10;
+                
+                // Add ground plane for physics
+                const groundShape = new CANNON.Plane();
+                const groundBody = new CANNON.Body({ mass: 0 });
+                groundBody.addShape(groundShape);
+                groundBody.quaternion.setFromAxisAngle(new CANNON.Vec3(1, 0, 0), -Math.PI / 2);
+                this.physics.world.addBody(groundBody);
+            }
+            
+            loadModels() {
+                // Fetch models from server
+                fetch('/models')
+                    .then(response => response.json())
+                    .then(data => {
+                        this.models = data;
+                        this.populateModelSelect();
+                    })
+                    .catch(error => console.error('Error loading models:', error));
+            }
+            
+            loadScenarios() {
+                // Fetch scenarios from server
+                fetch('/scenarios')
+                    .then(response => response.json())
+                    .then(data => {
+                        this.scenarios = data;
+                        this.populateScenarioSelect();
+                    })
+                    .catch(error => console.error('Error loading scenarios:', error));
+            }
+            
+            populateModelSelect() {
+                const category = document.getElementById('model-category').value;
+                const select = document.getElementById('model-select');
+                select.innerHTML = '';
+                
+                if (this.models[category]) {
+                    this.models[category].forEach(model => {
+                        const option = document.createElement('option');
+                        option.value = model;
+                        option.textContent = model.replace('.glb', '');
+                        select.appendChild(option);
+                    });
+                }
+            }
+            
+            populateScenarioSelect() {
+                const select = document.getElementById('scenario-select');
+                
+                this.scenarios.forEach(scenario => {
+                    const option = document.createElement('option');
+                    option.value = scenario.id;
+                    option.textContent = scenario.name;
+                    select.appendChild(option);
+                });
+            }
+            
+            loadEnvironment(type) {
+                // Remove existing environment
+                this.scene.children.forEach(child => {
+                    if (child.isEnvironment) {
+                        this.scene.remove(child);
+                    }
+                });
+                
+                // Add grid environment by default
+                if (type === 'grid') {
+                    const gridHelper = new THREE.GridHelper(1000, 50, 0xffb300, 0x444444);
+                    gridHelper.isEnvironment = true;
+                    this.scene.add(gridHelper);
+                    
+                    // Add circular platform
+                    const platformGeometry = new THREE.CylinderGeometry(200, 200, 5, 64);
+                    const platformMaterial = new THREE.MeshLambertMaterial({ 
+                        color: 0x333333,
+                        transparent: true,
+                        opacity: 0.7
+                    });
+                    const platform = new THREE.Mesh(platformGeometry, platformMaterial);
+                    platform.position.y = -2.5;
+                    platform.isEnvironment = true;
+                    this.scene.add(platform);
+                    
+                    // Add rings
+                    for (let i = 1; i <= 3; i++) {
+                        const ringGeometry = new THREE.RingGeometry(i * 50, i * 50 + 2, 64);
+                        const ringMaterial = new THREE.MeshBasicMaterial({ 
+                            color: 0xffb300, 
+                            side: THREE.DoubleSide,
+                            transparent: true,
+                            opacity: 0.3
+                        });
+                        const ring = new THREE.Mesh(ringGeometry, ringMaterial);
+                        ring.rotation.x = Math.PI / 2;
+                        ring.position.y = 0.1;
+                        ring.isEnvironment = true;
+                        this.scene.add(ring);
+                    }
+                } else {
+                    // Load environment model from server
+                    const loader = new THREE.GLTFLoader();
+                    loader.load(`/static/models/${type}`, (gltf) => {
+                        gltf.scene.isEnvironment = true;
+                        gltf.scene.scale.set(10, 10, 10);
+                        this.scene.add(gltf.scene);
+                    });
+                }
+            }
+            
+            addModel(modelType, modelName) {
+                const loader = new THREE.GLTFLoader();
+                
+                loader.load(`/static/models/${modelName}`, (gltf) => {
+                    const model = gltf.scene;
+                    
+                    // Scale and position model
+                    model.scale.set(10, 10, 10);
+                    model.position.y = 10;
+                    model.rotation.y = Math.random() * Math.PI * 2;
+                    
+                    // Add model to scene
+                    this.scene.add(model);
+                    
+                    // Update current model display
+                    document.getElementById('current-model').textContent = modelName;
+                    
+                    // Add physics if enabled
+                    if (this.physics.enabled) {
+                        this.addPhysicsToModel(model);
+                    }
+                    
+                    // Add to active models
+                    this.activeModels.push({
+                        type: modelType,
+                        name: modelName,
+                        object: model
+                    });
+                    
+                    // Check for animations
+                    if (gltf.animations && gltf.animations.length) {
+                        const mixer = new THREE.AnimationMixer(model);
+                        this.mixers.push(mixer);
+                        
+                        const animation = gltf.animations[0];
+                        const action = mixer.clipAction(animation);
+                        action.play();
+                    }
+                    
+                    // Flash effect on add
+                    this.flashEffect();
+                    
+                }, undefined, (error) => {
+                    console.error('Error loading model:', error);
+                });
+            }
+            
+            addPhysicsToModel(model) {
+                // Create a bounding box for the model
+                const box = new THREE.Box3().setFromObject(model);
+                const size = box.getSize(new THREE.Vector3());
+                
+                // Create physics body
+                const shape = new CANNON.Box(new CANNON.Vec3(size.x / 2, size.y / 2, size.z / 2));
+                const body = new CANNON.Body({ mass: 10 });
+                body.addShape(shape);
+                
+                // Position the body
+                body.position.copy(model.position);
+                body.quaternion.copy(model.quaternion);
+                
+                // Add to physics world
+                this.physics.world.addBody(body);
+                
+                // Store reference to the body and mesh
+                this.physics.bodies.push(body);
+                this.physics.meshes.push(model);
+            }
+            
+            loadScenario(scenarioId) {
+                // Fetch scenario configuration
+                fetch(`/load_scenario/${scenarioId}`)
+                    .then(response => response.json())
+                    .then(config => {
+                        // Clear scene
+                        this.clearScene();
+                        
+                        // Set current scenario
+                        this.currentScenario = config;
+                        
+                        // Load environment
+                        this.loadEnvironment(config.environment);
+                        
+                        // Load models
+                        config.models.forEach(model => {
+                            const category = this.getCategoryForModel(model);
+                            if (category) {
+                                this.addModel(category, model);
+                            }
+                        });
+                        
+                        // Set camera
+                        this.camera.position.set(
+                            config.camera.position[0],
+                            config.camera.position[1],
+                            config.camera.position[2]
+                        );
+                        this.camera.lookAt(
+                            config.camera.target[0],
+                            config.camera.target[1],
+                            config.camera.target[2]
+                        );
+                        
+                        // Set physics
+                        this.physics.enabled = (config.physics === 'complex');
+                        
+                        // Set lighting
+                        this.setLighting(config.lighting);
+                        
+                        // System message
+                        this.showSystemMessage(`Scenario "${scenarioId}" loaded successfully`);
+                    })
+                    .catch(error => {
+                        console.error('Error loading scenario:', error);
+                        this.showSystemMessage('Error loading scenario');
+                    });
+            }
+            
+            getCategoryForModel(modelName) {
+                // Find which category the model belongs to
+                for (const category in this.models) {
+                    if (this.models[category].includes(modelName)) {
+                        return category;
+                    }
+                }
+                return null;
+            }
+            
+            clearScene() {
+                // Remove all non-environment objects
+                this.activeModels.forEach(model => {
+                    this.scene.remove(model.object);
+                });
+                
+                // Clear active models
+                this.activeModels = [];
+                
+                // Clear physics bodies
+                this.physics.bodies.forEach(body => {
+                    this.physics.world.removeBody(body);
+                });
+                this.physics.bodies = [];
+                this.physics.meshes = [];
+                
+                // Clear mixers
+                this.mixers = [];
+                
+                // Update display
+                document.getElementById('current-model').textContent = 'None';
+            }
+            
+            setLighting(time) {
+                // Adjust lighting based on time of day
+                const ambientLight = this.scene.children.find(child => child instanceof THREE.AmbientLight);
+                const directionalLight = this.scene.children.find(child => child instanceof THREE.DirectionalLight);
+                
+                switch (time) {
+                    case 'day':
+                        ambientLight.intensity = 1;
+                        directionalLight.intensity = 1;
+                        directionalLight.color.set(0xffb300);
+                        break;
+                    case 'dusk':
+                        ambientLight.intensity = 0.5;
+                        directionalLight.intensity = 0.7;
+                        directionalLight.color.set(0xff7700);
+                        break;
+                    case 'night':
+                        ambientLight.intensity = 0.2;
+                        directionalLight.intensity = 0.3;
+                        directionalLight.color.set(0x0066ff);
+                        break;
+                }
+            }
+            
+            flashEffect() {
+                // Flash effect for holographic loading
+                const originalColor = this.pulsingLight.color.clone();
+                const originalIntensity = this.pulsingLight.intensity;
+                
+                this.pulsingLight.color.set(0xffffff);
+                this.pulsingLight.intensity = 5;
+                
+                setTimeout(() => {
+                    this.pulsingLight.color.copy(originalColor);
+                    this.pulsingLight.intensity = originalIntensity;
+                }, 300);
+            }
+            
+            showSystemMessage(message) {
+                const statusEl = document.querySelector('.system-status');
+                const messageEl = document.createElement('div');
+                messageEl.textContent = message;
+                statusEl.prepend(messageEl);
+                
+                // Fade out and remove after 5 seconds
+                setTimeout(() => {
+                    messageEl.style.opacity = '0';
+                    messageEl.style.transition = 'opacity 1s';
+                    setTimeout(() => messageEl.remove(), 1000);
+                }, 5000);
+            }
+            
+            updateSystemStatus() {
+                // Update random system status values for effect
+                const temp = Math.floor(Math.random() * 5) + 35;
+                const sync = (75 + Math.random() * 23).toFixed(1);
+                
+                const statusEl = document.querySelector('.system-status');
+                statusEl.innerHTML = `SYSTEM READY<br>CORE TEMPERATURE: ${temp}°C<br>SYNC RATIO: ${sync}%<br>ENTRY FLAG: SECURE`;
+            }
+            
+            setupEventListeners() {
+                // Model selection change
+                document.getElementById('model-category').addEventListener('change', () => {
+                    this.populateModelSelect();
+                });
+                
+                // Add model button
+                document.getElementById('add-model').addEventListener('click', () => {
+                    const category = document.getElementById('model-category').value;
+                    const model = document.getElementById('model-select').value;
+                    if (model) {
+                        this.addModel(category, model);
+                    }
+                });
+                
+                // Load scenario button
+                document.getElementById('load-scenario').addEventListener('click', () => {
+                    const scenarioId = document.getElementById('scenario-select').value;
+                    if (scenarioId) {
+                        this.loadScenario(scenarioId);
+                    }
+                });
+                
+                // Camera controls
+                document.getElementById('rotate-left').addEventListener('click', () => {
+                    this.controls.rotateLeft(Math.PI / 12);
+                });
+                
+                document.getElementById('rotate-right').addEventListener('click', () => {
+                    this.controls.rotateLeft(-Math.PI / 12);
+                });
+                
+                document.getElementById('zoom-in').addEventListener('click', () => {
+                    this.camera.position.multiplyScalar(0.9);
+                });
+                
+                document.getElementById('zoom-out').addEventListener('click', () => {
+                    this.camera.position.multiplyScalar(1.1);
+                });
+                
+                document.getElementById('move-up').addEventListener('click', () => {
+                    this.camera.position.y += 10;
+                });
+                
+                document.getElementById('move-down').addEventListener('click', () => {
+                    this.camera.position.y -= 10;
+                });
+                
+                // Toggle physics
+                document.getElementById('toggle-physics').addEventListener('click', () => {
+                    this.physics.enabled = !this.physics.enabled;
+                    this.showSystemMessage(`Physics ${this.physics.enabled ? 'enabled' : 'disabled'}`);
+                    
+                    // Add physics to existing models if enabled
+                    if (this.physics.enabled) {
+                        this.activeModels.forEach(model => {
+                            this.addPhysicsToModel(model.object);
+                        });
+                    }
+                });
+                
+                // Reset scene
+                document.getElementById('reset-scene').addEventListener('click', () => {
+                    this.clearScene();
+                    this.loadEnvironment('grid');
+                    this.showSystemMessage('Scene reset');
+                });
+                
+                // Handle drag and drop for model upload
+                this.container.addEventListener('dragover', (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    this.container.classList.add('drag-over');
+                });
+                
+                this.container.addEventListener('dragleave', () => {
+                    this.container.classList.remove('drag-over');
+                });
+                
+                this.container.addEventListener('drop', (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    this.container.classList.remove('drag-over');
+                    
+                    if (e.dataTransfer.files.length) {
+                        const file = e.dataTransfer.files[0];
+                        if (file.name.endsWith('.glb')) {
+                            // Upload the file
+                            const formData = new FormData();
+                            formData.append('model', file);
+                            
+                            fetch('/upload_model', {
+                                method: 'POST',
+                                body: formData
+                            })
+                            .then(response => response.json())
+                            .then(data => {
+                                if (data.success) {
+                                    this.showSystemMessage(`Model "${file.name}" uploaded successfully`);
+                                    this.loadModels(); // Refresh model list
+                                } else {
+                                    this.showSystemMessage('Upload failed: ' + data.error);
+                                }
+                            })
+                            .catch(error => {
+                                console.error('Error uploading model:', error);
+                                this.showSystemMessage('Upload failed');
+                            });
+                        } else {
+                            this.showSystemMessage('Only .glb files are supported');
+                        }
+                    }
+                });
+            }
+            
+            animate() {
+                requestAnimationFrame(() => this.animate());
+                
+                // Update stats
+                this.stats.begin();
+                
+                // Update controls
+                this.controls.update();
+                
+                // Update mixers for animations
+                const delta = this.clock.getDelta();
+                this.mixers.forEach(mixer => mixer.update(delta));
+                
+                // Update physics
+                if (this.physics.enabled) {
+                    this.physics.world.step(1/60);
+                    
+                    // Update meshes from physics bodies
+                    for (let i = 0; i < this.physics.bodies.length; i++) {
+                        this.physics.meshes[i].position.copy(this.physics.bodies[i].position);
+                        this.physics.meshes[i].quaternion.copy(this.physics.bodies[i].quaternion);
+                    }
+                }
+                
+                // Animate pulsing light
+                if (this.pulsingLight) {
+                    this.pulsingLight.intensity = 1.5 + Math.sin(this.clock.elapsedTime * 2) * 0.5;
+                }
+                
+                // Render scene with post-processing
+                this.composer.render();
+                
+                // End stats
+                this.stats.end();
+            }
+        }
+        
+        // Initialize the viewer when the DOM is loaded
+        document.addEventListener('DOMContentLoaded', () => {
+            const viewer = new HolographicViewer();
+            window.viewer = viewer; // Export to window for debugging
+        });
+    </script>
+</body>
+</html>
