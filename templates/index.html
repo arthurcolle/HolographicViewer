@@ -7,19 +7,24 @@
     <style>
         body { margin: 0; padding: 0; overflow: hidden; background-color: #000; color: #ffb300; font-family: monospace; }
         #container { position: relative; width: 100vw; height: 100vh; }
-        #renderer { position: absolute; top: 0; left: 0; width: 100%; height: 100%; }
-        #overlay { position: absolute; top: 0; left: 0; width: 100%; padding: 10px; z-index: 100; }
+        #renderer { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 1; }
+        #overlay { position: absolute; top: 0; left: 0; width: 100%; padding: 10px; z-index: 100; pointer-events: auto; }
         .panel { background-color: rgba(0, 0, 0, 0.7); border: 1px solid #ffb300; border-radius: 5px; padding: 10px; margin-bottom: 10px; }
         button, select { background-color: #ffb300; color: #000; border: none; padding: 5px 10px; margin: 5px; cursor: pointer; }
         h1, h2 { color: #ffb300; }
-        .grid { position: absolute; top: 0; left: 0; right: 0; bottom: 0; pointer-events: none; }
+        .grid { position: absolute; top: 0; left: 0; right: 0; bottom: 0; pointer-events: none; z-index: 0; }
         .grid:before, .grid:after { content: ""; position: absolute; width: 100%; height: 100%; background-size: 50px 50px; opacity: 0.3; }
         .grid:before { background-image: linear-gradient(to right, #ffb300 1px, transparent 1px); }
         .grid:after { background-image: linear-gradient(to bottom, #ffb300 1px, transparent 1px); }
-        .hologram-effect { position: absolute; top: 0; left: 0; right: 0; bottom: 0; pointer-events: none; background: repeating-linear-gradient(0deg, rgba(0, 0, 0, 0.1), rgba(0, 0, 0, 0.1) 1px, transparent 1px, transparent 2px); }
+        .hologram-effect { position: absolute; top: 0; left: 0; right: 0; bottom: 0; pointer-events: none; background: repeating-linear-gradient(0deg, rgba(0, 0, 0, 0.1), rgba(0, 0, 0, 0.1) 1px, transparent 1px, transparent 2px); z-index: 0; }
         .system-status { color: #ffb300; font-size: 12px; text-align: right; margin-top: 10px; }
-        #control-panel { position: absolute; bottom: 10px; left: 10px; right: 10px; display: flex; justify-content: space-between; }
+        #control-panel { position: absolute; bottom: 10px; left: 10px; right: 10px; display: flex; justify-content: space-between; z-index: 100; }
         .control-group { display: flex; flex-direction: column; }
+        .mt-2 { margin-top: 0.5rem; }
+        a { color: #ffb300; text-decoration: none; border: 1px solid #ffb300; padding: 3px 6px; }
+        a:hover { background-color: #ffb300; color: #000; }
+        #advanced-settings { position: absolute; bottom: 80px; left: 10px; z-index: 100; }
+        #system-status-footer { position: absolute; bottom: 140px; right: 10px; z-index: 100; width: 200px; }
     </style>
 </head>
 <body>
@@ -32,6 +37,7 @@
             <div class="panel">
                 <h1>ISHAN-CLAUDE HOLOGRAPHIC SYSTEM V1</h1>
                 <div>MODEL LOADED: <span id="current-model">None</span></div>
+                <div class="mt-2"><a href="/entity-sim">ENTITY SIMULATION</a></div>
             </div>
             
             <div class="panel">
@@ -81,13 +87,13 @@
             </div>
         </div>
 
-        <div class="panel">
+        <div id="advanced-settings" class="panel">
             <h2>Advanced Settings</h2>
             <label for="bloom-intensity">Bloom Intensity:</label>
             <input type="range" id="bloom-intensity" min="0" max="5" step="0.1" value="1.5" />
         </div>
         
-        <div class="panel system-status">
+        <div id="system-status-footer" class="panel system-status">
             SYSTEM READY<br>
             CORE TEMPERATURE: NOMINAL<br>
             SYNC RATIO: 78.5%<br>
@@ -577,7 +583,7 @@
             }
             
             showSystemMessage(message) {
-                const statusEl = document.querySelector('.system-status');
+                const statusEl = document.getElementById('system-status-footer');
                 const messageEl = document.createElement('div');
                 messageEl.textContent = message;
                 statusEl.prepend(messageEl);
@@ -595,7 +601,7 @@
                 const temp = Math.floor(Math.random() * 5) + 35;
                 const sync = (75 + Math.random() * 23).toFixed(1);
                 
-                const statusEl = document.querySelector('.system-status');
+                const statusEl = document.getElementById('system-status-footer');
                 statusEl.innerHTML = `SYSTEM READY<br>CORE TEMPERATURE: ${temp}°C<br>SYNC RATIO: ${sync}%<br>ENTRY FLAG: SECURE`;
             }
             
