@@ -152,18 +152,21 @@
             }
             
             init() {
-                // Setup renderer
+                // Setup renderer with improved settings
                 this.renderer.setSize(window.innerWidth, window.innerHeight);
                 this.renderer.setPixelRatio(window.devicePixelRatio);
                 this.renderer.setClearColor(0x000000, 0);
+                this.renderer.outputEncoding = THREE.sRGBEncoding;
+                this.renderer.gammaFactor = 2.2;
+                this.renderer.gammaOutput = true;
                 this.container.appendChild(this.renderer.domElement);
                 
                 // Setup camera
                 this.camera.position.set(0, 100, 300);
                 this.camera.lookAt(0, 0, 0);
                 
-                // Add ambient and environmental effects
-                this.scene.fog = new THREE.FogExp2(0x000000, 0.0015);
+                // Add ambient and environmental effects (reduced fog density)
+                this.scene.fog = new THREE.FogExp2(0x000000, 0.0008);
                 
                 // Handle window resize
                 window.addEventListener('resize', () => {
@@ -184,18 +187,27 @@
             }
             
             setupLights() {
-                // Add lights
-                const ambientLight = new THREE.AmbientLight(0x404040, 1);
+                // Add lights with increased intensity
+                const ambientLight = new THREE.AmbientLight(0xffffff, 1.5);
                 this.scene.add(ambientLight);
                 
-                const directionalLight = new THREE.DirectionalLight(0xffb300, 1);
+                const directionalLight = new THREE.DirectionalLight(0xffffff, 1.5);
                 directionalLight.position.set(1, 1, 1);
                 this.scene.add(directionalLight);
                 
                 // Add holographic light effect
-                const pointLight = new THREE.PointLight(0x00ccff, 2, 500);
+                const pointLight = new THREE.PointLight(0x00ccff, 3, 500);
                 pointLight.position.set(0, 150, 0);
                 this.scene.add(pointLight);
+                
+                // Add additional lights for better visibility
+                const frontLight = new THREE.DirectionalLight(0xffffff, 1);
+                frontLight.position.set(0, 0, 1);
+                this.scene.add(frontLight);
+                
+                const backLight = new THREE.DirectionalLight(0xffffff, 0.8);
+                backLight.position.set(0, 0, -1);
+                this.scene.add(backLight);
                 
                 // Animate the point light for a pulsing effect
                 this.pulsingLight = pointLight;
@@ -219,12 +231,12 @@
                 const renderPass = new THREE.RenderPass(this.scene, this.camera);
                 this.composer.addPass(renderPass);
                 
-                // Bloom effect for holographic glow
+                // Bloom effect for holographic glow with adjusted parameters
                 const bloomPass = new THREE.UnrealBloomPass(
                     new THREE.Vector2(window.innerWidth, window.innerHeight),
-                    1.5,  // strength
-                    0.4,  // radius
-                    0.85  // threshold
+                    1.0,  // strength (reduced to avoid washing out)
+                    0.5,  // radius
+                    0.2   // threshold (lowered to capture more of the model)
                 );
                 this.composer.addPass(bloomPass);
                 this.bloomPass = bloomPass;
@@ -375,6 +387,26 @@
                     
                     // Add model to scene
                     this.scene.add(model);
+                    
+                    // Make sure model materials are visible
+                    model.traverse((child) => {
+                        if (child.isMesh) {
+                            // Ensure materials are visible and properly lit
+                            if (child.material) {
+                                if (Array.isArray(child.material)) {
+                                    child.material.forEach(mat => {
+                                        mat.emissive = new THREE.Color(0x222222);
+                                        mat.emissiveIntensity = 0.2;
+                                        mat.needsUpdate = true;
+                                    });
+                                } else {
+                                    child.material.emissive = new THREE.Color(0x222222);
+                                    child.material.emissiveIntensity = 0.2;
+                                    child.material.needsUpdate = true;
+                                }
+                            }
+                        }
+                    });
                     
                     // Update current model display
                     document.getElementById('current-model').textContent = modelName;
@@ -552,19 +584,19 @@
                 
                 switch (time) {
                     case 'day':
-                        ambientLight.intensity = 1;
-                        directionalLight.intensity = 1;
-                        directionalLight.color.set(0xffb300);
+                        ambientLight.intensity = 1.5;
+                        directionalLight.intensity = 1.5;
+                        directionalLight.color.set(0xffffff);
                         break;
                     case 'dusk':
-                        ambientLight.intensity = 0.5;
-                        directionalLight.intensity = 0.7;
-                        directionalLight.color.set(0xff7700);
+                        ambientLight.intensity = 1.2;
+                        directionalLight.intensity = 1.0;
+                        directionalLight.color.set(0xff9900);
                         break;
                     case 'night':
-                        ambientLight.intensity = 0.2;
-                        directionalLight.intensity = 0.3;
-                        directionalLight.color.set(0x0066ff);
+                        ambientLight.intensity = 0.8;
+                        directionalLight.intensity = 0.7;
+                        directionalLight.color.set(0x6699ff);
                         break;
                 }
             }
