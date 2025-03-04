@@ -1,10 +1,13 @@
-from fastapi import FastAPI, HTTPException, UploadFile, File, Request
+from fastapi import FastAPI, HTTPException, UploadFile, File, Request, Form
 from fastapi.responses import JSONResponse, HTMLResponse
 from fastapi.templating import Jinja2Templates
 from fastapi.staticfiles import StaticFiles
 import uvicorn
 import os
 import json
+import subprocess
+import shutil
+from pathlib import Path
 from datetime import datetime, timedelta
 from typing import List, Dict, Any, Optional
 
@@ -71,16 +74,93 @@ def load_scenario(scenario_id):
     else:
         raise HTTPException(status_code=404, detail="Scenario not found")
 
-@app.post("/upload_model")
-async def upload_model(model: UploadFile = File(...)):
-    if not model.filename.endswith('.glb'):
-        raise HTTPException(status_code=400, detail="Invalid file type")
+def get_supported_formats():
+    """Returns a list of supported 3D model formats"""
+    return ['.glb', '.gltf', '.fbx', '.obj', '.stl', '.dae']
+
+def convert_to_glb(input_path, output_path):
+    """
+    Convert various 3D model formats to GLB using Blender
+    Returns the path to the converted file
+    """
+    # Create temp directory if it doesn't exist
+    os.makedirs('temp_conversions', exist_ok=True)
     
-    filepath = os.path.join('static/models', model.filename)
-    with open(filepath, "wb") as buffer:
+    # Get file extension
+    file_ext = os.path.splitext(input_path)[1].lower()
+    
+    # If already GLB, just copy the file
+    if file_ext == '.glb':
+        shutil.copy(input_path, output_path)
+        return output_path
+    
+    # For other formats, use Blender for conversion
+    # Note: This requires Blender to be installed on the system
+    try:
+        # Path to the Blender Python script for conversion
+        script_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'convert_model.py')
+        
+        # Run Blender headless to convert the model
+        cmd = [
+            'blender', '--background', '--python', script_path, '--', 
+            input_path, output_path
+        ]
+        
+        result = subprocess.run(cmd, capture_output=True, text=True)
+        
+        if result.returncode != 0:
+            print(f"Conversion error: {result.stderr}")
+            return None
+            
+        return output_path
+    except Exception as e:
+        print(f"Error during conversion: {str(e)}")
+        return None
+
+@app.post("/upload_model")
+async def upload_model(model: UploadFile = File(...), convert_to_glb_format: bool = Form(True)):
+    # Get file extension
+    filename = model.filename
+    file_ext = os.path.splitext(filename)[1].lower()
+    
+    # Check if file format is supported
+    supported_formats = get_supported_formats()
+    if file_ext not in supported_formats:
+        raise HTTPException(
+            status_code=400, 
+            detail=f"Invalid file type. Supported formats: {', '.join(supported_formats)}"
+        )
+    
+    # Create temp directory for uploads
+    os.makedirs('temp_uploads', exist_ok=True)
+    temp_path = os.path.join('temp_uploads', filename)
+    
+    # Save uploaded file
+    with open(temp_path, "wb") as buffer:
         buffer.write(await model.read())
     
-    return {"success": True, "filename": model.filename}
+    # Determine final filename and path
+    if convert_to_glb_format and file_ext != '.glb':
+        # Generate GLB filename
+        base_name = os.path.splitext(filename)[0]
+        glb_filename = f"{base_name}.glb"
+        output_path = os.path.join('static/models', glb_filename)
+        
+        # Convert to GLB
+        result_path = convert_to_glb(temp_path, output_path)
+        if not result_path:
+            # Clean up temp file
+            os.remove(temp_path)
+            raise HTTPException(status_code=500, detail="Failed to convert model to GLB format")
+        
+        # Clean up temp file
+        os.remove(temp_path)
+        return {"success": True, "filename": glb_filename, "converted": True}
+    else:
+        # Just move the file to the models directory
+        final_path = os.path.join('static/models', filename)
+        shutil.move(temp_path, final_path)
+        return {"success": True, "filename": filename, "converted": False}
 
 @app.get("/entities")
 def list_entities():
@@ -188,5 +268,8 @@ def list_entities():
     return JSONResponse(content=entities)
 
 if __name__ == "__main__":
+    # Create necessary directories
     os.makedirs('static/models', exist_ok=True)
+    os.makedirs('temp_uploads', exist_ok=True)
+    os.makedirs('temp_conversions', exist_ok=True)
     uvicorn.run(app, host="0.0.0.0", port=8000)
